@@ -1,76 +1,83 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const morgan = require('morgan');
-const connectDB = require('./config/db');
-const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
+require("dotenv").config();
 
-const authRoutes = require('./routes/authRoutes');
-const taskRoutes = require('./routes/taskRoutes');
+const express = require("express");
+const cors = require("cors");
+const morgan = require("morgan");
+const connectDB = require("./config/db");
+const { notFoundHandler, errorHandler } = require("./middleware/errorHandler");
 
-// Connect to MongoDB
-connectDB();
+const authRoutes = require("./routes/authRoutes");
+const taskRoutes = require("./routes/taskRoutes");
 
 const app = express();
 
-// Middleware
-app.use(morgan('dev'));
+app.use(morgan("dev"));
 app.use(express.json());
 
-// CORS configuration
 const allowedOrigins = [
-  process.env.CLIENT_URL || 'http://localhost:5175',
-  'http://localhost:5173',
-  'http://localhost:5174'
-];
+  process.env.CLIENT_URL,
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:5175",
+].filter(Boolean);
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // allow requests with no origin (like mobile apps, curl, or Postman)
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
+      if (!origin || allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
-      return callback(null, true); // Allow all localhost during dev
+      return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-  })
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
 );
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
-    message: 'Task Manager API is online and healthy',
-    data: {
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      version: '1.0.0'
-    }
+    message: "Task Manager API is running",
+    health: "/api/health",
   });
 });
 
-// API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/tasks', taskRoutes);
+app.get("/api/health", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Task Manager API is online and healthy",
+    data: {
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      version: "1.0.0",
+    },
+  });
+});
 
-// 404 & Global Error Handling
+app.use("/api/auth", authRoutes);
+app.use("/api/tasks", taskRoutes);
+
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5002;
+if (require.main === module) {
+  const PORT = process.env.PORT || 5002;
 
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Task Manager API running on http://localhost:${PORT} [${process.env.NODE_ENV || 'development'}]`);
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error(`💥 Unhandled Rejection: ${err.message}`);
-  server.close(() => process.exit(1));
-});
+  connectDB()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`Task Manager API running on port ${PORT}`);
+      });
+    })
+    .catch((err) => {
+      console.error("Database connection failed:", err.message);
+      process.exit(1);
+    });
+} else {
+  connectDB().catch((err) => {
+    console.error("Database connection failed:", err.message);
+  });
+}
 
 module.exports = app;
